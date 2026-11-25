@@ -284,6 +284,9 @@ const paid=d=>sum(t=>t.ref===d.id&&(d.dir==='hutang'?t.type==='out':t.type==='in
 const saved=g=>sum(t=>t.ref===g.id&&t.type==='save')-sum(t=>t.ref===g.id&&t.type==='wd');
 const money=n=>hide?'Rp•••••••':rp(n);
 const budget=()=>S.set.budget||{};
+// Batas anggaran yang berlaku di bulan m: snapshot terakhir <= m, kalau tidak ada pakai yang sekarang.
+const budgetAt=m=>{const H=S.set.budgetHist||{},k=Object.keys(H).filter(x=>x<=m).sort().pop();return k?H[k]:budget()};
+const saveBudget=B=>saveSet({budget:B,budgetHist:{...(S.set.budgetHist||{}),[ym()]:B}});
 const spentCat=(m,c)=>S.tx.filter(t=>t.type==='out'&&t.cat===c&&t.date.startsWith(m)).reduce((a,t)=>a+t.amt,0);
 const bColor=p=>p>=100?'var(--out)':p>=80?'var(--warn)':'var(--in)';
 
@@ -368,7 +371,9 @@ function sheetData(){const asc=[...S.tx].sort((a,b)=>(a.date+a.ts).localeCompare
  const T=[['Tanggal','Bulan','Jenis','Kategori','Akun','Jumlah','Catatan','Terkait','Dicatat oleh','ID']].concat(asc.map(t=>[t.date,mName(t.date.slice(0,7)),TL[t.type],t.cat,t.acct||'',(t.type==='in'||t.type==='wd'?1:-1)*t.amt,t.note||'',items.get(t.ref)?.name||'',t.by||'',t.id]));
  const months=[...new Set(S.tx.map(t=>t.date.slice(0,7)))].sort().reverse();
  const M=[['Bulan','Pemasukan','Pengeluaran','Ditabung bersih','Sisa','% pemasukan tersisa']].concat(months.map(m=>{const L=S.tx.filter(t=>t.date.startsWith(m)),i=tot(L,'in'),o=tot(L,'out'),s=tot(L,'save')-tot(L,'wd');return[mName(m),i,o,s,i-o-s,i?Math.round((i-o-s)/i*100):'']}));
- const cur=ym(),A=[['Kategori','Anggaran','Terpakai '+mName(cur),'Sisa','Terpakai (%)']].concat(Object.entries(budget()).map(([c,l])=>{const s=spentCat(cur,c);return[c,l,s,l-s,Math.round(s/l*100)]}));
+ const A=[['Bulan','Kategori','Anggaran','Terpakai','Sisa','Terpakai (%)','Status']];
+ const bm=[...new Set([ym(),...months])].sort().reverse();
+ for(const m of bm){const B=budgetAt(m);for(const [c,l] of Object.entries(B).sort()){const s=spentCat(m,c),p=Math.round(s/l*100);A.push([mName(m),c,l,s,l-s,p,p>=100?'Lewat':p>=80?'Hampir habis':'Aman'])}}
  return{Transaksi:T,Bulanan:M,Anggaran:A}}
 async function syncSheet(manual){if(shBusy){shAgain=true;return}shBusy=true;clearTimeout(shTimer);sheetMsg('Memperbarui tab ringkasan…');
  try{const D=sheetData();await gs('writeViews',D);const n=new Date();sheetMsg(`Tab ringkasan diperbarui ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')} · ${D.Transaksi.length-1} transaksi`);if(manual)toast('Sheet diperbarui')}
@@ -420,7 +425,7 @@ $('#goalForm').onsubmit=e=>{e.preventDefault();const target=num($('#gTarget').va
 const saveSet=patch=>put({...S.set,id:'settings',k:'set',...patch});
 function openBud(c){$('#bCat').value=c||'';const l=c&&budget()[c];$('#bAmt').value=l?l.toLocaleString('id-ID'):'';open('#shBud')}
 $('#addBud').onclick=()=>openBud('');
-$('#budForm').onsubmit=e=>{e.preventDefault();const c=$('#bCat').value.trim(),l=num($('#bAmt').value);if(!c)return;const B={...budget()};if(l)B[c]=l;else delete B[c];close();safe(()=>saveSet({budget:B}))};
+$('#budForm').onsubmit=e=>{e.preventDefault();const c=$('#bCat').value.trim(),l=num($('#bAmt').value);if(!c)return;const B={...budget()};if(l)B[c]=l;else delete B[c];close();safe(()=>saveBudget(B))};
 
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
  if(d.edit)openTx(items.get(d.edit));
@@ -428,7 +433,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
  else if(d.deld)ask('Hapus hutang ini? Pembayaran yang sudah tercatat tetap ada di mutasi.',()=>del(d.deld));
  else if(d.delg)ask('Hapus target ini? Setoran tetap ada di mutasi.',()=>del(d.delg));
  else if(d.delr)ask('Hentikan transaksi rutin ini? Yang sudah tercatat tetap ada.',()=>del(d.delr));
- else if(d.delb)ask('Hapus anggaran '+d.delb+'?',()=>{const B={...budget()};delete B[d.delb];return saveSet({budget:B})});
+ else if(d.delb)ask('Hapus anggaran '+d.delb+'?',()=>{const B={...budget()};delete B[d.delb];return saveBudget(B)});
  else if(d.bud)openBud(d.bud);
  else if(d.pay){const x=items.get(d.pay),h=x.dir==='hutang';openTx({type:h?'out':'in',cat:h?'Bayar hutang':'Terima piutang',ref:x.id,note:x.name})}
  else if(d.sv)openTx({type:'save',cat:'Setor tabungan',ref:d.sv});
