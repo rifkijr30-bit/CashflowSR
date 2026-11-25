@@ -80,6 +80,7 @@ nav.bot a.on{color:light-dark(var(--pri),#9db7ff)}
     <p class="hint">Isi sekali saja di HP ini. URL dan sandi didapat saat memasang Apps Script.</p>
     <div><label for="cUrl">URL Apps Script (berakhiran /exec)</label><input id="cUrl" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec"></div>
     <div><label for="cTok">Sandi (TOKEN di Code.gs)</label><input id="cTok" type="password" autocomplete="off"></div>
+    <div><label for="cWho">Nama pencatat di HP ini</label><input id="cWho" maxlength="20" placeholder="Contoh: Rifki / Istri"></div>
     <p class="note" id="cMsg" hidden></p>
     <button class="btn" id="cSave">Sambungkan</button>
   </div>
@@ -261,6 +262,7 @@ try{hide=localStorage.getItem('cf_hide')==='1'}catch(e){}
 const cfg=()=>{try{return JSON.parse(localStorage.getItem('cf_conn')||'null')}catch(e){return null}};
 async function call(c,action,args){const r=await fetch(c.url,{method:'POST',body:JSON.stringify({token:c.token,action,args})});
  if(!r.ok)throw new Error('Server menjawab '+r.status);const j=await r.json();if(!j.ok)throw new Error(j.error||'Gagal');return j.data}
+const who=()=>(cfg()||{}).who||'';
 const gs=(fn,...a)=>{const c=cfg();if(!c)return Promise.reject(new Error('Belum tersambung'));return call(c,fn,a)};
 function ingest(list){items=new Map(list.map(o=>[o.id,o]));S={tx:[],debt:[],goal:[],rec:[],set:{}};
  for(const o of items.values()){if(o.k==='tx')S.tx.push(o);else if(o.k==='debt')S.debt.push(o);else if(o.k==='goal')S.goal.push(o);else if(o.k==='rec')S.rec.push(o);else if(o.k==='set')S.set=o}
@@ -291,7 +293,7 @@ function flowRows(L,el){const i=tot(L,'in'),o=tot(L,'out'),s=tot(L,'save')-tot(L
  el.innerHTML=r('Masuk',i,'--in')+r('Keluar',o,'--out')+r('Ditabung',s,'--save')+
  `<p class="hint" style="margin-top:4px">${i?`Sisa bersih ${money(i-o-s)} · ${Math.round((i-o)/i*100)}% pemasukan tidak terpakai`:'Belum ada pemasukan di periode ini'}</p>`}
 function txRow(t){const sign=t.type==='in'||t.type==='wd'?'+':'-',cl=t.type==='in'?'in':t.type==='out'?'out':'sv',ref=t.ref&&items.get(t.ref)?.name;
- return `<div class="row"><div><b>${esc(t.cat)}${t.rec?' <span class="m">· rutin</span>':''}</b><span class="m">${fmtD(t.date)}${t.acct?' · '+esc(t.acct):''}${ref?' · '+esc(ref):''}${t.note?'<br>'+esc(t.note):''}</span>
+ return `<div class="row"><div><b>${esc(t.cat)}${t.rec?' <span class="m">· rutin</span>':''}</b><span class="m">${fmtD(t.date)}${t.acct?' · '+esc(t.acct):''}${ref?' · '+esc(ref):''}${t.by?' · oleh '+esc(t.by):''}${t.note?'<br>'+esc(t.note):''}</span>
  <div><button class="lnk" data-edit="${esc(t.id)}">Ubah</button><button class="lnk del" data-del="${esc(t.id)}">Hapus</button></div></div>
  <span class="num ${cl}">${sign}${money(t.amt)}</span></div>`}
 function renderCmp(){const cur=ym(),prev=addM(cur,-1),day=today().slice(8),pd=prev+'-'+day;
@@ -305,7 +307,7 @@ function renderCmp(){const cur=ym(),prev=addM(cur,-1),day=today().slice(8),pd=pr
  $('#cmp').innerHTML=`<div class="cmp"><span class="h"></span><span class="h num">Bulan ini</span><span class="h num">Ubah</span>${rows.map(([l,a,b,g])=>`<b>${l}</b><span class="num">${money(a)}</span>${d(a,b,g)}`).join('')}</div>`+
  (cc.length?`<p class="hint" style="margin:14px 0 6px">Kategori yang paling berubah</p><div class="cmp">${cc.map(([c,a,b])=>`<span>${esc(c)}</span><span class="num">${money(a)}</span>${d(a,b,'down')}`).join('')}</div>`:'')}
 function render(){
- const nm=S.set.name||'';$('#hello').textContent=nm?`Halo, ${nm}`:'Halo';
+ const nm=S.set.name||'',hn=who()||nm;$('#hello').textContent=hn?`Halo, ${hn}`:'Halo';
  $('#saldo').textContent=money(saldo());$('#eye').textContent=hide?'Tampilkan':'Sembunyikan';
  const cur=ym(),mon=S.tx.filter(t=>t.date.startsWith(cur));flowRows(mon,$('#flow'));
  const cat={};mon.filter(t=>t.type==='out').forEach(t=>cat[t.cat]=(cat[t.cat]||0)+t.amt);
@@ -354,7 +356,7 @@ function renderBudget(){const cur=ym(),B=Object.entries(budget()),L=B.reduce((a,
 async function runRecurring(){if(recDone)return;recDone=true;const cur=ym(),d=+today().slice(8);let made=0;
  for(const r of S.rec){let m=r.last?addM(r.last,1):cur,last=r.last;
   for(let i=0;i<12&&m<=cur;i++,m=addM(m,1)){if(m===cur&&d<r.day)break;
-   const id='r'+r.id+'_'+m;if(!items.has(id)){await put({id,k:'tx',type:r.type,amt:r.amt,cat:r.cat,acct:r.acct||'',note:r.note||'',ref:r.ref||'',date:m+'-'+String(r.day).padStart(2,'0'),ts:Date.now().toString(36),rec:r.id});made++}last=m}
+   const id='r'+r.id+'_'+m;if(!items.has(id)){await put({id,k:'tx',type:r.type,amt:r.amt,cat:r.cat,acct:r.acct||'',note:r.note||'',ref:r.ref||'',date:m+'-'+String(r.day).padStart(2,'0'),ts:Date.now().toString(36),rec:r.id,by:'Otomatis'});made++}last=m}
   if(last!==r.last){const{id,...b}=r;await put({id,...b,last})}}
  if(made){toast(made+' transaksi rutin tercatat');changed()}}
 
@@ -363,7 +365,7 @@ let shTimer=null,shBusy=false,shAgain=false;
 const sheetMsg=(t,bad)=>{const e=$('#sheetStat');e.textContent=t;e.classList.toggle('bad',!!bad)};
 function scheduleSheet(){clearTimeout(shTimer);shTimer=setTimeout(()=>syncSheet(false),3000)}
 function sheetData(){const asc=[...S.tx].sort((a,b)=>(a.date+a.ts).localeCompare(b.date+b.ts));
- const T=[['Tanggal','Bulan','Jenis','Kategori','Akun','Jumlah','Catatan','Terkait','ID']].concat(asc.map(t=>[t.date,mName(t.date.slice(0,7)),TL[t.type],t.cat,t.acct||'',(t.type==='in'||t.type==='wd'?1:-1)*t.amt,t.note||'',items.get(t.ref)?.name||'',t.id]));
+ const T=[['Tanggal','Bulan','Jenis','Kategori','Akun','Jumlah','Catatan','Terkait','Dicatat oleh','ID']].concat(asc.map(t=>[t.date,mName(t.date.slice(0,7)),TL[t.type],t.cat,t.acct||'',(t.type==='in'||t.type==='wd'?1:-1)*t.amt,t.note||'',items.get(t.ref)?.name||'',t.by||'',t.id]));
  const months=[...new Set(S.tx.map(t=>t.date.slice(0,7)))].sort().reverse();
  const M=[['Bulan','Pemasukan','Pengeluaran','Ditabung bersih','Sisa','% pemasukan tersisa']].concat(months.map(m=>{const L=S.tx.filter(t=>t.date.startsWith(m)),i=tot(L,'in'),o=tot(L,'out'),s=tot(L,'save')-tot(L,'wd');return[mName(m),i,o,s,i-o-s,i?Math.round((i-o-s)/i*100):'']}));
  const cur=ym(),A=[['Kategori','Anggaran','Terpakai '+mName(cur),'Sisa','Terpakai (%)']].concat(Object.entries(budget()).map(([c,l])=>{const s=spentCat(cur,c);return[c,l,s,l-s,Math.round(s/l*100)]}));
@@ -403,7 +405,7 @@ function openTx(o={}){editId=o.id||null;$('#txTitle').textContent=editId?'Ubah t
 $('#txForm').onsubmit=e=>{e.preventDefault();const amt=num($('#tAmt').value);if(!amt){toast('Isi jumlahnya');return}
  const prev=editId?items.get(editId):null,type=$('#tType').value,date=$('#tDate').value;
  const o={id:editId||nid('t'),k:'tx',type,amt,cat:$('#tCat').value.trim()||TL[type],date,acct:$('#tAcct').value.trim(),note:$('#tNote').value.trim(),ref:$('#tRef').value,ts:prev?.ts||Date.now().toString(36)};
- if(prev&&prev.rec)o.rec=prev.rec;
+ if(prev&&prev.rec)o.rec=prev.rec;o.by=prev&&prev.by||who();
  const rec=!editId&&$('#tRec').checked;close();
  safe(async()=>{if(rec){const rid=nid('');const r={id:'c'+rid,k:'rec',type,amt,cat:o.cat,acct:o.acct,note:o.note,ref:o.ref,day:Math.min(+date.slice(8),28),last:date.slice(0,7)};o.id='r'+r.id+'_'+r.last;o.rec=r.id;await put(o);await put(r)}else await put(o)})};
 
@@ -445,15 +447,16 @@ $('#restore').onchange=async e=>{const f=e.target.files[0];if(!f)return;
 
 /* ---------- mulai ---------- */
 function showSetup(on){$('#v-setup').classList.toggle('on',on);$('.wrap').style.display=on?'none':'';$('nav.bot').style.display=on?'none':'';
- if(on){const c=cfg()||{};$('#cUrl').value=c.url||'';$('#cTok').value=c.token||''}}
+ if(on){const c=cfg()||{};$('#cUrl').value=c.url||'';$('#cTok').value=c.token||'';$('#cWho').value=c.who||''}}
 function boot(){showSetup(false);go('beranda');render();setSync(false,'Memuat data dari Sheet…');
  gs('getInfo').then(i=>{sheetUrl=i&&i.url||'';render()}).catch(()=>{});
  gs('getAll').then(list=>{ingest(list);setSync(true,'Tersimpan di Google Sheet');if(!ready){ready=true;runRecurring()}})
   .catch(e=>setSync(false,'Gagal memuat: '+String(e&&e.message||e).slice(0,80)+(navigator.onLine?'':' (offline)')))}
-$('#cSave').onclick=async()=>{const url=$('#cUrl').value.trim(),token=$('#cTok').value,m=$('#cMsg');
+$('#cSave').onclick=async()=>{const url=$('#cUrl').value.trim(),token=$('#cTok').value,w=$('#cWho').value.trim(),m=$('#cMsg');
+ if(!w){m.hidden=false;m.classList.add('bad');m.textContent='Isi nama pencatat dulu';return}
  if(!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)){m.hidden=false;m.classList.add('bad');m.textContent='URL harus berbentuk https://script.google.com/macros/s/…/exec';return}
  m.hidden=false;m.classList.remove('bad');m.textContent='Mengecek koneksi…';
- try{await call({url,token},'getInfo',[]);localStorage.setItem('cf_conn',JSON.stringify({url,token}));boot()}
+ try{await call({url,token},'getInfo',[]);localStorage.setItem('cf_conn',JSON.stringify({url,token,who:w}));boot()}
  catch(e){m.classList.add('bad');m.textContent='Gagal tersambung: '+String(e&&e.message||e).slice(0,120)}};
 $('#cEdit').onclick=()=>showSetup(true);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
