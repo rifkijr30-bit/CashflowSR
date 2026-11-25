@@ -374,7 +374,17 @@ function sheetData(){const asc=[...S.tx].sort((a,b)=>(a.date+a.ts).localeCompare
  const A=[['Bulan','Kategori','Anggaran','Terpakai','Sisa','Terpakai (%)','Status']];
  const bm=[...new Set([ym(),...months])].sort().reverse();
  for(const m of bm){const B=budgetAt(m);for(const [c,l] of Object.entries(B).sort()){const s=spentCat(m,c),p=Math.round(s/l*100);A.push([mName(m),c,l,s,l-s,p,p>=100?'Lewat':p>=80?'Hampir habis':'Aman'])}}
- return{Transaksi:T,Bulanan:M,Anggaran:A}}
+ // Ringkasan per bulan per kategori — sumber data tab Dashboard di Sheet
+ const K=[['Bulan','Jenis','Kategori','Anggaran','Aktual']];
+ for(const m of bm){const L=S.tx.filter(t=>t.date.startsWith(m)),B=budgetAt(m),add=(o,k,v)=>o[k]=(o[k]||0)+v;
+  const inc={},out={},sv={};
+  L.forEach(t=>{if(t.type==='in')add(inc,t.cat,t.amt);else if(t.type==='out')add(out,t.cat,t.amt);
+   else{const g=t.ref&&items.get(t.ref)?.name||'Tanpa target';add(sv,g,t.type==='save'?t.amt:-t.amt)}});
+  Object.keys(B).forEach(c=>{if(!(c in out))out[c]=0});
+  Object.entries(inc).forEach(([c,v])=>K.push([mName(m),'Pemasukan',c,'',v]));
+  Object.entries(out).forEach(([c,v])=>K.push([mName(m),'Pengeluaran',c,B[c]||'',v]));
+  Object.entries(sv).forEach(([c,v])=>K.push([mName(m),'Tabungan',c,'',v]))}
+ return{Transaksi:T,Bulanan:M,Anggaran:A,Kategori:K}}
 async function syncSheet(manual){if(shBusy){shAgain=true;return}shBusy=true;clearTimeout(shTimer);sheetMsg('Memperbarui tab ringkasan…');
  try{const D=sheetData();await gs('writeViews',D);const n=new Date();sheetMsg(`Tab ringkasan diperbarui ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')} · ${D.Transaksi.length-1} transaksi`);if(manual)toast('Sheet diperbarui')}
  catch(e){sheetMsg('Gagal memperbarui tab ringkasan: '+String(e&&e.message||e).slice(0,140),1);if(manual)toast('Gagal')}
